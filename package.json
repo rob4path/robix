@@ -1,0 +1,21 @@
+{
+  "name": "rx-cli",
+  "version": "1.0.0",
+  "description": "A simple CLI tool",
+  "main": "dist/rx.js",
+  "bin": {
+    "rx": "./run.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node run.js"
+  },
+  "dependencies": {
+    "commander": "^9.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^4.0.0",
+    "ts-node": "^10.0.0",
+    "@types/node": "^16.0.0"
+  }
+}
