@@ -4,22 +4,22 @@ import { Command } from 'commander';
 
 export function setupGenerateCommand(program: Command) {
     program
-        .command('g <type> <name>')
+        .command('g <name>')
         .option('-p, --path <path>', 'Specify the output directory')
         .option('-e, --entity <entity>', 'Specify the entity name for data-access files')
         .option('-w, --wrapper <wrapper>', 'Specify an optional wrapper directory')
-        .option('--no-data-access', 'Skip generating data-access files')
-        .option('--template <template>', 'Specify the component template (table, dialog, simple)', 'simple')
+        .option('--service', 'Generate a service file')
+        .option('--template <template>', 'Specify the component template (table, basic, dialog)', 'basic')
         .description('Generate a new component, service, or module')
-        .action((type: string, name: string, cmdObj: { path?: string; entity?: string; wrapper?: string; dataAccess?: boolean; template?: string }) => {
+        .action((name: string, cmdObj: { path?: string; entity?: string; wrapper?: string; service?: boolean; template?: string }) => {
             const outputPath = cmdObj.path || './';
             const wrapper = cmdObj.wrapper || '';
-            const entity = cmdObj.entity || name; // Use name as default if no entity is provided
-            const includeDataAccess = cmdObj.dataAccess !== false; // Default to true unless explicitly set to false
-            const template = cmdObj.template || 'simple';
+            const entity = cmdObj.entity;
+            const createService = cmdObj.service || false;
+            const template = cmdObj.template || 'basic';
 
             const componentName = kebabToCamel(name);
-            const entityName = kebabToCamel(entity);
+            const entityName = entity ? kebabToCamel(entity) : undefined;
 
             let fullPath = path.join(process.cwd(), outputPath);
 
@@ -27,16 +27,12 @@ export function setupGenerateCommand(program: Command) {
                 fullPath = path.join(fullPath, wrapper);
             }
 
-            switch (type) {
-                case 'c':
-                    generateComponent(componentName, fullPath, template);
-                    if (includeDataAccess) {
-                        generateDataAccess(entityName, fullPath);
-                    }
-                    break;
-                default:
-                    console.log(`Unsupported type: ${type}`);
-                    break;
+            // Generate component
+            generateComponent(componentName, fullPath, template);
+
+            // Generate data-access files if entity or service is provided
+            if (entityName || createService) {
+                generateDataAccess(entityName, fullPath, createService);
             }
         });
 }
@@ -46,65 +42,18 @@ function generateComponent(name: string, outputPath: string, template: string) {
     if (!fs.existsSync(componentDir)) {
         fs.mkdirSync(componentDir, { recursive: true });
 
-        // Create component files based on the selected template
+        // Create TypeScript file
         const tsFile = path.join(componentDir, `${name}.component.ts`);
-        const htmlFile = path.join(componentDir, `${name}.component.html`);
-        const scssFile = path.join(componentDir, `${name}.component.scss`);
-
-        let tsTemplate: string;
-        let htmlTemplate: string;
-
-        switch (template) {
-            case 'table':
-                tsTemplate = `
-          import { Component } from '@angular/core';
-
-          @Component({
-            selector: '${name}',
-            templateUrl: './${name}.component.html',
-            styleUrls: ['./${name}.component.scss']
-          })
-          export class ${capitalize(name)}Component {
-            // Table-specific logic here
-          }
-        `;
-                htmlTemplate = `<table><tr><td>${name} Table Component</td></tr></table>`;
-                break;
-            case 'dialog':
-                tsTemplate = `
-          import { Component } from '@angular/core';
-
-          @Component({
-            selector: '${name}',
-            templateUrl: './${name}.component.html',
-            styleUrls: ['./${name}.component.scss']
-          })
-          export class ${capitalize(name)}Component {
-            // Dialog-specific logic here
-          }
-        `;
-                htmlTemplate = `<div class="dialog">${name} Dialog Component</div>`;
-                break;
-            case 'simple':
-            default:
-                tsTemplate = `
-          import { Component } from '@angular/core';
-
-          @Component({
-            selector: '${name}',
-            templateUrl: './${name}.component.html',
-            styleUrls: ['./${name}.component.scss']
-          })
-          export class ${capitalize(name)}Component {
-            constructor() {}
-          }
-        `;
-                htmlTemplate = `<p>${name} works!</p>`;
-                break;
-        }
-
+        const tsTemplate = getComponentTemplate(name, template);
         fs.writeFileSync(tsFile, tsTemplate);
+
+        // Create HTML file
+        const htmlFile = path.join(componentDir, `${name}.component.html`);
+        const htmlTemplate = getHtmlTemplate(name, template);
         fs.writeFileSync(htmlFile, htmlTemplate);
+
+        // Create SCSS file
+        const scssFile = path.join(componentDir, `${name}.component.scss`);
         fs.writeFileSync(scssFile, `/* ${name} component styles */`);
 
         console.log(`Component ${name} generated successfully at ${componentDir}!`);
@@ -113,39 +62,123 @@ function generateComponent(name: string, outputPath: string, template: string) {
     }
 }
 
-function generateDataAccess(entity: string, outputPath: string) {
+function generateDataAccess(entity: string | undefined, outputPath: string, createService: boolean) {
     const dataAccessDir = path.join(outputPath, 'data-access');
     if (!fs.existsSync(dataAccessDir)) {
         fs.mkdirSync(dataAccessDir, { recursive: true });
 
-        // Create model file
-        const modelFile = path.join(dataAccessDir, `${entity}.model.ts`);
-        const modelTemplate = `
-      export interface ${capitalize(entity)}Model {
-        id: number;
-        // Define other properties here
-      }
-    `;
-        fs.writeFileSync(modelFile, modelTemplate);
+        if (entity) {
+            // Create model file
+            const modelFile = path.join(dataAccessDir, `${entity}.model.ts`);
+            const modelTemplate = `
+        export interface ${capitalize(entity)}Model {
+          id: number;
+          // Define other properties here
+        }
+      `;
+            fs.writeFileSync(modelFile, modelTemplate);
 
-        // Create service file
-        const serviceFile = path.join(dataAccessDir, `${entity}.service.ts`);
-        const serviceTemplate = `
-      import { Injectable } from '@angular/core';
-      import { ${capitalize(entity)}Model } from './${entity}.model';
+            // Create service file
+            const serviceFile = path.join(dataAccessDir, `${entity}.service.ts`);
+            const serviceTemplate = `
+        import { Injectable } from '@angular/core';
+        import { ${capitalize(entity)}Model } from './${entity}.model';
 
-      @Injectable({
-        providedIn: 'root'
-      })
-      export class ${capitalize(entity)}Service {
-        // Define service methods here
-      }
-    `;
-        fs.writeFileSync(serviceFile, serviceTemplate);
+        @Injectable({
+          providedIn: 'root'
+        })
+        export class ${capitalize(entity)}Service {
+          // Define service methods here
+        }
+      `;
+            fs.writeFileSync(serviceFile, serviceTemplate);
 
-        console.log(`Data access files for ${entity} generated successfully at ${dataAccessDir}!`);
+            console.log(`Data access files for ${entity} generated successfully at ${dataAccessDir}!`);
+        }
+
+        if (createService) {
+            // Generate a service file if not already generated
+            const serviceDir = path.join(outputPath, 'services');
+            if (!fs.existsSync(serviceDir)) {
+                fs.mkdirSync(serviceDir, { recursive: true });
+
+                const serviceFile = path.join(serviceDir, `${entity}.service.ts`);
+                const serviceTemplate = `
+          import { Injectable } from '@angular/core';
+
+          @Injectable({
+            providedIn: 'root'
+          })
+          export class ${capitalize(entity!)}Service {
+            // Define service methods here
+          }
+        `;
+                fs.writeFileSync(serviceFile, serviceTemplate);
+
+                console.log(`Service ${entity} generated successfully at ${serviceDir}!`);
+            }
+        }
     } else {
         console.log(`Data access directory already exists at ${dataAccessDir}.`);
+    }
+}
+
+// Helper function to get the component template based on the selected template type
+function getComponentTemplate(name: string, template: string): string {
+    switch (template) {
+        case 'table':
+            return `
+        import { Component } from '@angular/core';
+
+        @Component({
+          selector: '${name}',
+          templateUrl: './${name}.component.html',
+          styleUrls: ['./${name}.component.scss']
+        })
+        export class ${capitalize(name)}Component {
+          // Table-specific logic here
+        }
+      `;
+        case 'dialog':
+            return `
+        import { Component } from '@angular/core';
+
+        @Component({
+          selector: '${name}',
+          templateUrl: './${name}.component.html',
+          styleUrls: ['./${name}.component.scss']
+        })
+        export class ${capitalize(name)}Component {
+          // Dialog-specific logic here
+        }
+      `;
+        case 'basic':
+        default:
+            return `
+        import { Component } from '@angular/core';
+
+        @Component({
+          selector: '${name}',
+          templateUrl: './${name}.component.html',
+          styleUrls: ['./${name}.component.scss']
+        })
+        export class ${capitalize(name)}Component {
+          constructor() {}
+        }
+      `;
+    }
+}
+
+// Helper function to get the HTML template based on the selected template type
+function getHtmlTemplate(name: string, template: string): string {
+    switch (template) {
+        case 'table':
+            return `<table><tr><td>${name} Table Component</td></tr></table>`;
+        case 'dialog':
+            return `<div class="dialog">${name} Dialog Component</div>`;
+        case 'basic':
+        default:
+            return `<p>${name} works!</p>`;
     }
 }
 
