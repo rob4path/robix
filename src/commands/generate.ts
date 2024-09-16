@@ -7,18 +7,32 @@ export function setupGenerateCommand(program: Command) {
         .command('g <type> <name>')
         .option('-p, --path <path>', 'Specify the output directory')
         .option('-e, --entity <entity>', 'Specify the entity name for data-access files')
+        .option('-w, --wrapper <wrapper>', 'Specify an optional wrapper directory')
+        .option('--no-data-access', 'Skip generating data-access files')
+        .option('--template <template>', 'Specify the component template (table, dialog, simple)', 'simple')
         .description('Generate a new component, service, or module')
-        .action((type: string, name: string, cmdObj: { path?: string; entity?: string }) => {
+        .action((type: string, name: string, cmdObj: { path?: string; entity?: string; wrapper?: string; dataAccess?: boolean; template?: string }) => {
             const outputPath = cmdObj.path || './';
+            const wrapper = cmdObj.wrapper || '';
             const entity = cmdObj.entity || name; // Use name as default if no entity is provided
+            const includeDataAccess = cmdObj.dataAccess !== false; // Default to true unless explicitly set to false
+            const template = cmdObj.template || 'simple';
 
             const componentName = kebabToCamel(name);
             const entityName = kebabToCamel(entity);
 
+            let fullPath = path.join(process.cwd(), outputPath);
+
+            if (wrapper) {
+                fullPath = path.join(fullPath, wrapper);
+            }
+
             switch (type) {
                 case 'c':
-                    generateComponent(componentName, outputPath);
-                    generateDataAccess(entityName, outputPath);
+                    generateComponent(componentName, fullPath, template);
+                    if (includeDataAccess) {
+                        generateDataAccess(entityName, fullPath);
+                    }
                     break;
                 default:
                     console.log(`Unsupported type: ${type}`);
@@ -27,33 +41,70 @@ export function setupGenerateCommand(program: Command) {
         });
 }
 
-function generateComponent(name: string, outputPath: string) {
-    const componentDir = path.join(process.cwd(), outputPath, name);
+function generateComponent(name: string, outputPath: string, template: string) {
+    const componentDir = path.join(outputPath, name);
     if (!fs.existsSync(componentDir)) {
         fs.mkdirSync(componentDir, { recursive: true });
 
-        // Create TypeScript file
+        // Create component files based on the selected template
         const tsFile = path.join(componentDir, `${name}.component.ts`);
-        const tsTemplate = `
-      import { Component } from '@angular/core';
-
-      @Component({
-        selector: '${name}',
-        templateUrl: './${name}.component.html',
-        styleUrls: ['./${name}.component.scss']
-      })
-      export class ${capitalize(name)}Component {
-        constructor() {}
-      }
-    `;
-        fs.writeFileSync(tsFile, tsTemplate);
-
-        // Create HTML file
         const htmlFile = path.join(componentDir, `${name}.component.html`);
-        fs.writeFileSync(htmlFile, `<p>${name} works!</p>`);
-
-        // Create SCSS file
         const scssFile = path.join(componentDir, `${name}.component.scss`);
+
+        let tsTemplate: string;
+        let htmlTemplate: string;
+
+        switch (template) {
+            case 'table':
+                tsTemplate = `
+          import { Component } from '@angular/core';
+
+          @Component({
+            selector: '${name}',
+            templateUrl: './${name}.component.html',
+            styleUrls: ['./${name}.component.scss']
+          })
+          export class ${capitalize(name)}Component {
+            // Table-specific logic here
+          }
+        `;
+                htmlTemplate = `<table><tr><td>${name} Table Component</td></tr></table>`;
+                break;
+            case 'dialog':
+                tsTemplate = `
+          import { Component } from '@angular/core';
+
+          @Component({
+            selector: '${name}',
+            templateUrl: './${name}.component.html',
+            styleUrls: ['./${name}.component.scss']
+          })
+          export class ${capitalize(name)}Component {
+            // Dialog-specific logic here
+          }
+        `;
+                htmlTemplate = `<div class="dialog">${name} Dialog Component</div>`;
+                break;
+            case 'simple':
+            default:
+                tsTemplate = `
+          import { Component } from '@angular/core';
+
+          @Component({
+            selector: '${name}',
+            templateUrl: './${name}.component.html',
+            styleUrls: ['./${name}.component.scss']
+          })
+          export class ${capitalize(name)}Component {
+            constructor() {}
+          }
+        `;
+                htmlTemplate = `<p>${name} works!</p>`;
+                break;
+        }
+
+        fs.writeFileSync(tsFile, tsTemplate);
+        fs.writeFileSync(htmlFile, htmlTemplate);
         fs.writeFileSync(scssFile, `/* ${name} component styles */`);
 
         console.log(`Component ${name} generated successfully at ${componentDir}!`);
@@ -63,7 +114,7 @@ function generateComponent(name: string, outputPath: string) {
 }
 
 function generateDataAccess(entity: string, outputPath: string) {
-    const dataAccessDir = path.join(process.cwd(), outputPath, 'data-access');
+    const dataAccessDir = path.join(outputPath, 'data-access');
     if (!fs.existsSync(dataAccessDir)) {
         fs.mkdirSync(dataAccessDir, { recursive: true });
 
