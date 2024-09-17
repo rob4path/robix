@@ -1,104 +1,55 @@
-import * as fs from 'fs';
 import * as path from 'path';
-import * as readline from 'readline';
 import { Command } from 'commander';
-
-// Helper function to ask for user confirmation
-function askQuestion(query: string): Promise<string> {
-    const rl = readline.createInterface({
-        input: process.stdin,
-        output: process.stdout,
-    });
-
-    return new Promise(resolve => rl.question(query, (ans: string) => {
-        rl.close();
-        resolve(ans);
-    }));
-}
-
-// Helper function to create the files
-function createFile(filePath: string, content: string) {
-    fs.writeFileSync(filePath, content, { encoding: 'utf-8' });
-    console.log(`File created: ${filePath}`);
-}
+import { FileUtils } from '../Utils/FileUtils';
+import { StringUtils } from '../Utils/StringUtils';
+import {
+    getModelTemplate,
+    getRouterTemplate,
+    getControllerTemplate,
+    getServiceTemplate
+} from '../templates/express/templates';
 
 export function setupGenerateExpressCommand(program: Command) {
     program
         .command('generate-express <name>')
+        .alias('g e')  // Alias for 'generate-express'
+        .alias('g-e') // Alias for 'generate-express'
         .option('-p, --path <path>', 'Specify the output directory', './')
+        .option('--js', 'Generate JavaScript (.js) files instead of TypeScript (.ts)')
         .description('Generate files for an Express app: model, router, controller, and service')
-        .action(async (name: string, cmdObj: { path?: string }) => {
+        .action(async (name: string, cmdObj: { path?: string; js?: boolean }) => {
             const outputPath = cmdObj.path || './';
             const folderPath = path.join(outputPath, name);
+            const ext = cmdObj.js ? 'js' : 'ts'; // Switch between js and ts file extensions
 
-            // Check if directory already exists
-            if (fs.existsSync(folderPath)) {
-                const answer = await askQuestion(`Directory ${folderPath} already exists. Do you want to overwrite it? (yes/no): `);
+            const dirCreated = await FileUtils.ensureDirExists(folderPath, true);
 
-                if (answer.toLowerCase() !== 'yes') {
-                    console.log('Operation canceled.');
-                    return;
-                }
-            } else {
-                fs.mkdirSync(folderPath, { recursive: true });
-                console.log(`Directory created: ${folderPath}`);
+            if (dirCreated) {
+                const replacements = {
+                    Name: StringUtils.capitalize(name),
+                    name: name.toLowerCase()
+                };
+
+                // Define file paths
+                const modelFile = path.join(folderPath, `${name}.model.${ext}`);
+                const routerFile = path.join(folderPath, `${name}.router.${ext}`);
+                const controllerFile = path.join(folderPath, `${name}.controller.${ext}`);
+                const serviceFile = path.join(folderPath, `${name}.service.${ext}`);
+
+                // Retrieve templates
+                const modelTemplate = getModelTemplate(replacements);
+                const routerTemplate = getRouterTemplate(replacements);
+                const controllerTemplate = getControllerTemplate(replacements);
+                const serviceTemplate = getServiceTemplate(replacements);
+
+                // Create the files
+                FileUtils.createFile(modelFile, modelTemplate);
+                FileUtils.createFile(routerFile, routerTemplate);
+                FileUtils.createFile(controllerFile, controllerTemplate);
+                FileUtils.createFile(serviceFile, serviceTemplate);
+
+                console.log(`Express files generated successfully for ${name} at ${folderPath}`);
+                process.exit(0)
             }
-
-            // Generate the files
-            const modelFile = path.join(folderPath, `${name}.model.ts`);
-            const routerFile = path.join(folderPath, `${name}.router.ts`);
-            const controllerFile = path.join(folderPath, `${name}.controller.ts`);
-            const serviceFile = path.join(folderPath, `${name}.service.ts`);
-
-            // File content templates
-            const modelTemplate = `
-        export interface ${capitalize(name)} {
-          id: number;
-          // Add your model properties here
-        }
-      `;
-
-            const routerTemplate = `
-        import { Router } from 'express';
-        import { get${capitalize(name)} } from './${name}.controller';
-
-        const router = Router();
-
-        router.get('/', get${capitalize(name)});
-
-        export default router;
-      `;
-
-            const controllerTemplate = `
-        import { Request, Response } from 'express';
-        import { ${capitalize(name)}Service } from './${name}.service';
-
-        export const get${capitalize(name)} = async (req: Request, res: Response) => {
-          const data = await ${capitalize(name)}Service.getAll();
-          res.json(data);
-        };
-      `;
-
-            const serviceTemplate = `
-        export class ${capitalize(name)}Service {
-          static async getAll() {
-            // Your service logic to fetch data
-            return [{ id: 1, name: '${name}' }];
-          }
-        }
-      `;
-
-            // Create the files
-            createFile(modelFile, modelTemplate);
-            createFile(routerFile, routerTemplate);
-            createFile(controllerFile, controllerTemplate);
-            createFile(serviceFile, serviceTemplate);
-
-            console.log(`Express files generated successfully for ${name} at ${folderPath}`);
         });
-}
-
-// Helper function to capitalize the first letter of the name
-function capitalize(str: string): string {
-    return str.charAt(0).toUpperCase() + str.slice(1);
 }
